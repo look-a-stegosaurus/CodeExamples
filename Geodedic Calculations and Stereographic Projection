@@ -1,0 +1,101 @@
+Geodedic Calculations and Stereographic Projection:
+Point & Bearing Naviagation Edge Cases
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+Stereographic projection from the unit circle offers a method
+to describe all primitive Pythagorean triples. Specifically, projecting from the north pole (0,1)
+onto the x-axis creates a one-to-one correspondence between the rational points (x, y) on the unit
+circle (excluding y = 1) and the rational points on the x-axis. 
+
+For a rational point 
+
+(m/n, 0)
+
+on the x-axis, the inverse stereographic projection yields the point 
+
+(2mn / (m^2 + n^2), (m^2 - n^2) / (m^2 + n^2))
+
+which corresponds to Euclid's formula for a Pythagorean triple.
+
+Stereographic projection also provides an alternative parametrization of the unit circle, 
+complementing the traditional trigonometric functions (sin x, cos x). This projection maps to 
+
+cos x = (t^2 - 1) / (t^2 + 1)
+
+and 
+
+sin x = 2t / (t^2 + 1)
+
+simplifying integrals involving trigonometric functions. Additionally, stereographic projection 
+is angle-preserving (conformal) and is especially useful when centered at the Earth's poles, 
+converting meridians to rays and parallels to circles centered at the origin. The spherical form
+of stereographic projection is expressed in polar coordinates with radius 
+
+r = 2R tan(pi/4 - phi/2)
+
+and 
+
+theta = lambda.
+
+While this projection is infinitely large near the poles, it can still represent points close to
+the South Pole by extending the map's boundaries. For regions smaller than a few hundred 
+kilometers, an ellipsoidal model is preferred for accuracy.
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+Geo_Point geo_to_stereo(const Geo_Point& geo) {
+    double lat_rad = to_radians(geo.lat);
+    double lon_rad = to_radians(geo.lon);
+    double k = 2 * RADIUS_EARTH / (1 + sin(latRad));
+    Geo_Point p;
+    p.lat = k * cos(lat_rad) * sin(lon_rad);
+    p.lon = k * cos(lat_rad) * cos(lon_rad);
+    return p;
+}
+
+Geo_Point stereo_to_geo(const Geo_Point& p) {
+    double rho = sqrt(p.lat * p.lat + p.lon * p.lon);
+    double c = 2 * atan(rho / (2 * RADIUS_EARTH));
+    Geo_Point geo;
+    geo.lat = to_degrees(asin(cos(c)));
+    geo.lon = to_degrees(atan2(p.lat, p.lon));
+    return geo;
+}
+
+Geo_Point calculate_new_position_stereo(const Geo_Point& current_position, double distance, double bearing) {
+    Geo_Point p = geoToStereo(current_position);
+
+    double displacement = distance;
+    double bearing_rad = to_radians(bearing);
+
+    p.lat += displacement * cos(bearing_rad);
+    p.lon += displacement * sin(bearing_rad);
+
+    return stereo_to_geo(p);
+}
+
+Geo_Point calculate_new_position_geodesic(const Geo_Point& current_position, double distance, double bearing) {
+    double lat_rad = to_radians(currentPosition.lat);
+    double lon_rad = to_radians(currentPosition.lon);
+    double bearing_rad = to_radians(bearing);
+
+    double new_lat_rad = asin(sin(lat_rad) * cos(distance / RADIUS_EARTH) + cos(lat_rad) * sin(distance / RADIUS_EARTH) * cos(bearing_rad));
+    double new_lon_rad = lon_rad + atan2(sin(bearing_rad) * sin(distance / RADIUS_EARTH) * cos(lat_rad), cos(distance / RADIUS_EARTH) - sin(lat_rad) * sin(new_lat_rad));
+
+    Geo_Point new_point;
+    new_point.lat = to_degrees(new_lat_rad);
+    new_point.lon = to_degrees(new_lon_rad);
+    new_point.lon = normalize_longitude(new_point.lon);
+
+    return new_point;
+}
+
+Geo_Point calculate_new_position(const Geo_Point& current_position, double distance, double bearing) {
+    if (std::abs(current_position.lat) >= POLAR_THRESHOLD) {
+        return calculate_new_position_stereo(current_position, distance, bearing);
+    }
+    else {
+        return calculate_new_position_geodesic(current_position, distance, bearing);
+    }
+}
