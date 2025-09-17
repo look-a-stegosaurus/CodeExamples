@@ -1,0 +1,75 @@
+/*
+The lifting scheme alternates 
+    predict (odd samples using even neighbors) &
+    update (even samples using odd neighbors) 
+    
+so that information is progressively moved into
+    high-pass (detail) &
+    low-pass (approximation) channels.
+
+At the end of the forward pass it interleaves the coefficients:
+    first half holds evens (approximation/low pass) &
+    second half holds odds (detail/high pass). 
+    
+This specific lifting uses 
+    linear predictors with coefficients 1/4 and 1/2,
+    two predict/update pairs &
+    uniform scale by 1/2.
+
+Much slower than Haar; yields better frequency separation & smoother approximation
+*/
+
+void lifting_wavelet_transform(double *sig, int len)
+{
+    int i, j;
+    double *tmp = malloc(len * sizeof(double));
+
+    if (!tmp) {}
+
+    // predict 1
+    // crude predict: shift odd sample toward local average of even neighbors
+    #pragma omp parallel for
+    for (i = 1; i < len - 1; i += 2)
+        sig[i] += (sig[i - 1] + sig[i + 1]) / 4.0;
+
+    // update 1
+    // remove somepredicted energy from even samples
+    #pragma omp parallel for
+    for (i = 2; i < len; i += 2)
+        sig[i] -= (sig[i - 1] + sig[i + 1]) / 2.0;
+
+    // pedict 2
+    // pair of predict & update apes multi-stage filter bank
+    #pragma omp parallel for
+    for (i = 1; i < len - 1; i += 2)
+        sig[i] -= (sig[i - 1] + sig[i + 1]) / 4.0;
+
+    // update 2
+    #pragma omp parallel for
+    for (i = 2; i < len; i += 2)
+        sig[i] += (sig[i - 1] + sig[i + 1]) / 2.0;
+
+    // scaling
+    for (i = 0; i < len; i++)
+        tmp[i] = sig[i] / 2.0;
+
+    // interleave coefficients
+    for (i = 0, j = 0; i < len; i += 2, j++)
+        sig[j] = tmp[i];
+    for (i = 1, j = len / 2; i < len; i += 2, j++)
+        sig[j] = tmp[i];
+
+    free(tmp);
+}
+
+/*
+Reverse the transform:
+  de-interleave coefficients
+  scaling
+  predict 2
+  update 2
+  predict 1
+  update 1
+  copy result back to input array
+*/
+
